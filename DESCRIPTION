@@ -27,8 +27,8 @@ Description: Implements the age-specific Physiologically Based Pharmacokinetic m
     Physiological parameters and calibration constants are derived from adult
     male reference and occupational-worker data; no female-specific parameter
     set is implemented.
-URL: https://github.com/ScottCoffin/Leggett
-BugReports: https://github.com/ScottCoffin/Leggett/issues
+URL: https://github.com/OEHHA-NTES/Leggett_Plus
+BugReports: https://github.com/OEHHA-NTES/Leggett_Plus/issues
 License: GPL (>= 2)
 Encoding: UTF-8
 Depends: R (>= 4.1)

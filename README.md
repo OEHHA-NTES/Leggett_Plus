@@ -3,8 +3,8 @@
 <!-- badges: start -->
 
 ![R](https://img.shields.io/badge/R-%E2%89%A5%204.1-blue) ![License: GPL (\>= 2)](https://img.shields.io/badge/License-GPL--2%2B-blue)
-[![Codecov test coverage](https://codecov.io/gh/ScottCoffin/Leggett/graph/badge.svg)](https://app.codecov.io/gh/ScottCoffin/Leggett)
-[![R-CMD-check](https://github.com/ScottCoffin/Leggett/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/ScottCoffin/Leggett/actions/workflows/R-CMD-check.yaml)
+[![Codecov test coverage](https://codecov.io/gh/OEHHA-NTES/Leggett_Plus/graph/badge.svg)](https://app.codecov.io/gh/OEHHA-NTES/Leggett_Plus)
+[![R-CMD-check](https://github.com/OEHHA-NTES/Leggett_Plus/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/OEHHA-NTES/Leggett_Plus/actions/workflows/R-CMD-check.yaml)
 <!-- badges: end -->
 
 <img src="inst/shiny-examples/LeggettApp/www/leggettplus.png" width="250"/>
@@ -31,7 +31,7 @@
 
 ``` r
 # install.packages("remotes")
-remotes::install_github("ScottCoffin/Leggett")
+remotes::install_github("OEHHA-NTES/Leggett_Plus")
 ```
 
 ### Installation from Tarball Source
@@ -115,4 +115,4 @@ GPL (\>= 2). See `LICENSE.md` for details.
 
 ## Contributing
 
-Issues and pull requests are welcome. Please use https://github.com/ScottCoffin/Leggett/issues for bug reports and feature requests.
+Issues and pull requests are welcome. Please use https://github.com/OEHHA-NTES/Leggett_Plus/issues for bug reports and feature requests.
