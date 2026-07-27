@@ -1,0 +1,500 @@
+# LeggettPlus: A Guide to the Lead PBPK Simulator
+
+## Overview
+
+`LeggettPlus` provides an open-source, reproducible implementation of
+the Leggett+ physiologically based pharmacokinetic (PBPK) model for lead
+(Pb). The model was originally developed by [Richard Leggett
+(1993)](https://pmc.ncbi.nlm.nih.gov/articles/PMC1519877/) and later
+updated by [Vork, Carlisle and Brown
+(2013)](https://oehha.ca.gov/sites/default/files/media/downloads/air/document/pbpk2013.pdf);
+[Vork & Carlisle (2020)](https://doi.org/10.1080/15459624.2020.1743845);
+and [Vork, Brown, and Carlisle
+(2023)](https://doi.org/10.1080/15459624.2022.2150767).
+
+The package includes:
+
+- [`leggett_base_parameters()`](https://oehha-ntes.github.io/Leggett_Plus/reference/leggett_base_parameters.md)
+  — build the physiological parameter set
+- [`run_leggett_model()`](https://oehha-ntes.github.io/Leggett_Plus/reference/run_leggett_model.md)
+  — solve the 21-compartment ODE system across one or more exposure
+  stages
+- [`summarize_leggett_output()`](https://oehha-ntes.github.io/Leggett_Plus/reference/summarize_leggett_output.md)
+  — extract compartment values, maxima, and AUC from a model run
+- [`launch_leggett_app()`](https://oehha-ntes.github.io/Leggett_Plus/reference/launch_leggett_app.md)
+  — start the bundled Shiny application
+
+### Intended use and limitations
+
+LeggettPlus is intended for research, regulatory evaluation, and
+exposure-scenario exploration. Outputs should be interpreted within the
+context of model assumptions, parameter uncertainty, and available
+toxicokinetic data. The package is **not** intended for clinical
+diagnosis or individual medical decision-making.
+
+**Male-reference physiology.** The package’s physiological parameters
+and calibration constants (body weight, hematocrit, blood-volume
+scaling, and RBC binding capacity) are derived from adult male /
+male-dominated occupational-worker data (Leggett, 1993, and subsequent
+updates). There is no female-specific parameter set implemented — no
+separate hematocrit range, blood-volume expansion, or RBC binding
+capacity for female individuals, including during pregnancy. Simulated
+results should not be assumed to represent female physiology.
+
+------------------------------------------------------------------------
+
+## Model structure: 21 compartments
+
+The ODE system tracks lead mass (µg) through the following compartments:
+
+| Code | Compartment | Biological meaning |
+|----|----|----|
+| `plasd` | Plasma (diffusible) | Free, unbound lead in plasma; primary distribution pool |
+| `plasb` | Plasma (bound) | Protein-bound lead in plasma |
+| `evf` | Extracellular fluid | Interstitial fluid exchanging rapidly with plasma |
+| `rbc` | Red blood cells | Lead sequestered in erythrocytes; major blood burden |
+| `csf` | Cortical bone surface | Rapid surface exchange with plasma |
+| `cex` | Cortical bone (exchangeable) | Intermediate-term cortical storage |
+| `cne` | Cortical bone (non-exchangeable) | Long-term cortical retention (years–decades) |
+| `tsf` | Trabecular bone surface | Rapid surface exchange with plasma |
+| `tex` | Trabecular bone (exchangeable) | Intermediate-term trabecular storage |
+| `tne` | Trabecular bone (non-exchangeable) | Long-term trabecular retention |
+| `livhu` | Liver (high perfusion) | High-turnover hepatic pool |
+| `livlu` | Liver (low perfusion) | Slow-turnover hepatic pool |
+| `strpd` | Soft tissue (rapid) | Fast-exchange peripheral tissues |
+| `stmid` | Soft tissue (intermediate) | Medium-turnover soft tissues |
+| `stslo` | Soft tissue (slow) | Slow-exchange depot (e.g., hair, nails) |
+| `brain` | Brain | Central nervous system compartment |
+| `kidoth` | Kidney (other) | Non-excretory renal tissue |
+| `kidurp` | Kidney (urinary path) | Proximal tubule + urinary path excretion |
+| `sint` | Small intestine | GI absorption zone; receives oral + biliary load |
+| `lintu` | Large intestine (upper) | Transit toward excretion |
+| `lintl` | Large intestine (lower) | Final GI compartment; lead excreted in feces |
+
+Blood lead level (BLL, µg/dL) is a derived quantity computed from
+`rbc + plasd + plasb` divided by blood volume. It is not a state
+variable but is calculated during summarization.
+
+------------------------------------------------------------------------
+
+## Quick start
+
+### Minimal simulation
+
+A simulation requires a **stage schedule** — a data frame where each row
+represents a discrete exposure period (stage). All columns must be
+present.
+
+``` r
+
+library(LeggettPlus)
+
+# Single-stage example: background oral intake only, no inhalation
+schedule <- data.frame(
+  # ---- Time ----
+  duration = 365,               # Length of this stage in DAYS (integer; rounded if fractional)
+
+  # ---- Non-inhalation background intakes (µg/day) ----
+  # These represent all non-air occupational sources: ingestion of
+  # contaminated dust, dermal absorption, dietary lead at the worksite, etc.
+  Occ.background.ug.d = 0,      # Occupational background (µg/day) — set 0 if air is the only source
+
+  # Non-occupational background: diet, drinking water, consumer products, soil/dust
+  # ingestion at home. FDA interim reference level for adults is 8.8 µg/day from food.
+  NonOcc.background.ug.d = 2.2, # Non-occupational background (µg/day)
+
+  # ---- Airborne lead concentrations (µg/m³) ----
+  Occ.pb.ug.m3    = 0,          # Airborne Pb at the workplace (µg/m³);
+                                 # OSHA PEL = 50 µg/m³; OSHA action level = 30 µg/m³
+
+  NonOcc.pb.ug.m3 = 0.15,       # Ambient airborne Pb outside work (µg/m³);
+                                 # NAAQS rolling 3-month average = 0.15 µg/m³
+
+  # ---- Breathing rates (m³/DAY) ----
+  # The model uses daily rates. Convert hourly rates by multiplying by 24.
+  # OEHHA Air Toxics Hot Spots Guidance (2015) provides age/activity-specific
+  # rates in L/kg-day (residential) or L/kg-8h (worker) that must first be
+  # converted to m³/day using body weight.
+  Occ.breath.rate.m3.d    = 30, # Occupational (worker) daily breathing rate (m³/day)
+  NonOcc.breath.rate.m3.d = 17, # Non-occupational (residential) daily breathing rate (m³/day)
+
+  # ---- Work schedule ----
+  work.hour.perweek = 40,        # Hours worked per week; used to partition
+                                 # occupational vs. non-occupational exposure time.
+                                 # Set to 0 for scenarios without a workplace.
+
+  # ---- Oral intake (µg/day) ----
+  # Direct oral uptake entering the GI tract. Absorb fraction is controlled by
+  # abs_ratio in run_leggett_model() (default 0.20 for adults).
+  oral.intake.ug.d = 0           # Any additional direct oral dose not already in
+                                 # the background columns (e.g., a supplement or
+                                 # experimental bolus). Usually 0 for field scenarios.
+)
+
+out <- run_leggett_model(schedule)
+head(out$time_series)
+#>   time       plasd        evf      rbc       plasb       csf       cex
+#> 1    0 0.000000000 0.00000000 0.000000 0.000000000 0.0000000 0.0000000
+#> 2    1 0.003916887 0.01206443 1.594497 0.002658280 0.1634495 0.0440129
+#> 3    2 0.004485538 0.01382104 3.331099 0.005555387 0.2579576 0.1497212
+#> 4    3 0.004925894 0.01518127 5.067053 0.008453616 0.3164784 0.2901984
+#> 5    4 0.005321016 0.01640202 6.766953 0.011293982 0.3587878 0.4524617
+#> 6    5 0.005694420 0.01755597 8.421100 0.014060289 0.3939920 0.6306438
+#>            cne       tsf        tex          tne     livhu        livlu
+#> 1 0.000000e+00 0.0000000 0.00000000 0.000000e+00 0.0000000 0.0000000000
+#> 2 5.811589e-06 0.2047953 0.05514819 5.384159e-06 0.2745786 0.0009095225
+#> 3 4.130440e-05 0.3232100 0.18760776 3.826752e-05 0.5914247 0.0038919058
+#> 4 1.243008e-04 0.3965345 0.36364643 1.151647e-04 0.9261270 0.0091307390
+#> 5 2.652577e-04 0.4495468 0.56700071 2.457680e-04 1.2713637 0.0167159128
+#> 6 4.712132e-04 0.4936571 0.79032102 4.366029e-04 1.6239655 0.0267037203
+#>       strpd      stmid       stslo       brain      kidoth        sint
+#> 1 0.0000000 0.00000000 0.000000000 0.000000000 0.000000000 0.000000000
+#> 2 0.2780072 0.03534436 0.007090809 0.001063334 0.001417142 0.003047339
+#> 3 0.3654524 0.07829441 0.015754631 0.002361940 0.003146468 0.003975670
+#> 4 0.4127227 0.12599315 0.025427670 0.003811144 0.005074853 0.004843106
+#> 5 0.4499684 0.17761368 0.035950112 0.005386896 0.007170061 0.005696806
+#> 6 0.4838429 0.23281006 0.047257625 0.007079478 0.009418985 0.006548065
+#>       kidurp       lintu       lintl
+#> 1 0.00000000 0.000000000 0.000000000
+#> 2 0.03303783 0.007156867 0.005211387
+#> 3 0.06904372 0.011117017 0.013140774
+#> 4 0.10506338 0.014151665 0.019937136
+#> 5 0.14036373 0.016971300 0.025811258
+#> 6 0.17474347 0.019742737 0.031230006
+```
+
+#### What `run_leggett_model()` returns
+
+The function returns a named list:
+
+- **`time_series`**: a data frame with one row per day and one column
+  per compartment (plus `time` in days). Values are lead mass in **µg**.
+- **`metadata`**: model inputs and derived volumes (`blood_volume_dl`,
+  `plasma_volume_dl`, `rbc_volume_dl`) needed for concentration
+  calculations.
+
+------------------------------------------------------------------------
+
+## Physiological parameters
+
+[`leggett_base_parameters()`](https://oehha-ntes.github.io/Leggett_Plus/reference/leggett_base_parameters.md)
+computes static physiological values and the initial state vector. You
+can inspect or override defaults, but note that `body_weight_kg` and
+`hematocrit` are both **male-reference values**: the defaults below, and
+the RBC binding saturation constant they feed into (`Sat.ug.dL` in
+[`leggett_base_parameters()`](https://oehha-ntes.github.io/Leggett_Plus/reference/leggett_base_parameters.md)),
+are calibrated against adult male / occupational-worker data. There is
+no female-specific hematocrit range or blood-volume expansion
+implemented.
+
+``` r
+
+params <- leggett_base_parameters(
+  body_weight_kg    = 73,     # Body weight (kg). Scales blood volume and OEHHA breathing-rate conversions.
+                              # Reference value from adult male occupational-worker data.
+  hematocrit        = 0.3802, # Fractional hematocrit (0–1). Determines RBC vs. plasma volume split.
+                              # Default is the reference adult male value used in Leggett (1993);
+                              # no female-specific default is provided.
+  age_years         = 40,     # Age at start of simulation (years). Influences some kinetic parameters.
+  initial_bll_ug_dl = 0.78    # Initial blood lead level (µg/dL) before new exposures begin.
+                              # CDC NHANES 50th-percentile for US adults (2015–16) is 0.78 µg/dL.
+)
+
+# Derived blood volumes (dL)
+params$blood_volume_dl
+#> [1] 54.2025
+params$rbc_volume_dl
+#> [1] 20.60779
+params$plasma_volume_dl
+#> [1] 33.59471
+```
+
+Additional parameters passed to
+[`run_leggett_model()`](https://oehha-ntes.github.io/Leggett_Plus/reference/run_leggett_model.md):
+
+| Argument | Default | Meaning |
+|----|----|----|
+| `inhalation_transfer` | 0.30 | Inhalation Transfer Coefficient (ITC): fraction of inhaled lead absorbed into plasma. Calibrated to ~0.30 from occupational worker data. |
+| `abs_ratio` | 0.20 | Oral absorption fraction for GI uptake. Adults typically absorb ~20% of ingested lead. |
+
+------------------------------------------------------------------------
+
+## Multi-stage schedules
+
+Each row in the schedule data frame is an independent exposure stage
+solved sequentially. The final compartment state of one stage becomes
+the initial state for the next. This allows you to model changing
+exposures over a career lifetime.
+
+### Occupational scenario
+
+An example occupational scenario is provided below: 20 years of
+workplace exposure followed by 20 years of retirement with background
+exposure only.
+
+``` r
+
+schedule_occ_ret <- data.frame(
+  duration = c(
+    20 * 365,  # Working years (days)
+    20 * 365   # Retirement years (days)
+  ),
+  Occ.background.ug.d = c(25, 0),    # Occupational non-air background: 25 µg/day at work, 0 in retirement
+  NonOcc.background.ug.d = c(2.2, 2.2), # Non-occupational background stays constant
+  Occ.pb.ug.m3 = c(30, 0),           # Occupational airborne Pb: 30 µg/m³ during work, 0 in retirement
+  NonOcc.pb.ug.m3 = c(0.15, 0.15),   # Ambient Pb stays constant
+  Occ.breath.rate.m3.d = c(30, 0),   # Worker breathing rate during exposure; 0 when retired
+  NonOcc.breath.rate.m3.d = c(17, 17),
+  work.hour.perweek = c(40, 0),       # 40 h/week during work; 0 in retirement
+  oral.intake.ug.d = c(0, 0)
+)
+
+out_ret <- run_leggett_model(
+  stage_schedule    = schedule_occ_ret,
+  body_weight_kg    = 73,
+  hematocrit        = 0.3802,
+  age_years         = 30,             # Age at simulation start (will be 30 when work begins)
+  initial_bll_ug_dl = 0.78
+)
+
+nrow(out_ret$time_series)  # total days simulated
+#> [1] 14599
+```
+
+### Pulse scenario
+
+A pulse scenario models discrete, acute exposure events separated by
+recovery intervals. Each pulse is represented as a one-day stage with an
+elevated `Occ.background.ug.d` equal to the pulse dose.
+
+``` r
+
+# Background stage between pulses
+background_stage <- data.frame(
+  duration                = 29,   # days between pulses
+  Occ.background.ug.d     = 0,
+  NonOcc.background.ug.d  = 2.2,
+  Occ.pb.ug.m3            = 0,
+  NonOcc.pb.ug.m3         = 0.15,
+  Occ.breath.rate.m3.d    = 0,
+  NonOcc.breath.rate.m3.d = 17,
+  work.hour.perweek       = 0,
+  oral.intake.ug.d        = 0
+)
+
+# Pulse stage: same as background but with a one-day dose
+pulse_stage <- background_stage
+pulse_stage$duration <- 1
+pulse_stage$Occ.background.ug.d <- 500  # µg delivered in one day
+
+# 3 pulses each separated by 29 background days
+pulse_schedule <- do.call(rbind, replicate(3, rbind(pulse_stage, background_stage), simplify = FALSE))
+
+out_pulse <- run_leggett_model(pulse_schedule)
+```
+
+------------------------------------------------------------------------
+
+## Breathing rates
+
+The model requires **daily** breathing rates (m³/day) for occupational
+and non-occupational periods. The OEHHA Air Toxics Hot Spots Guidance
+(2015) provides age- and activity-specific rates that can be converted
+as follows:
+
+**Residential (non-occupational):** Table 5.6 gives rates in L/kg-day.
+Convert to m³/day:
+
+``` r
+
+# L/kg-day × body_weight_kg / 1000 = m³/day
+# Example: 16–70 y mean = 185 L/kg-day, 73 kg body weight
+residential_m3_d <- 185 * 73 / 1000
+```
+
+**Worker (occupational):** Table 5.8 gives 8-hour rates in L/kg-8h.
+Convert to m³/day:
+
+``` r
+
+# L/kg-8h × body_weight_kg / 8 h × 24 h/day / 1000 = m³/day
+# Example: Moderate intensity (3.0–<6.0 MET), 95th = 230 L/kg-8h, 73 kg
+worker_m3_d <- 230 * 73 / 8 * 24 / 1000
+```
+
+The Shiny app automates this conversion when **OEHHA mode** is selected,
+using the appropriate age band and activity intensity from Tables 5.6
+and 5.8. Job presets map common occupational categories (e.g., Farming,
+Office Work) to Table 5.8 intensity bands.
+
+------------------------------------------------------------------------
+
+## Worker Adjustment Factor and Discount Factor (WAF/DF)
+
+When a lead source operates intermittently (e.g., 8 h/day, 5 days/week),
+the annual average concentration over-represents exposure. OEHHA Eq.
+5.4.1.2 defines the **Worker Adjustment Factor (WAF)**:
+
+    WAF = (24 / H_source) × (7 / D_source) × DF
+
+where:
+
+- `H_source` = hours per day the source is active
+- `D_source` = days per week the source is active
+- `DF` = Discount Factor (1.0 unless partial shift overlap applies)
+
+For a standard 8 h/day, 5 d/week scenario with full overlap, WAF ≈ 4.2.
+The app’s WAF/DF block in the Exposure Inputs panel computes this
+automatically and adjusts the occupational air concentration
+accordingly.
+
+------------------------------------------------------------------------
+
+## Summarizing results
+
+[`summarize_leggett_output()`](https://oehha-ntes.github.io/Leggett_Plus/reference/summarize_leggett_output.md)
+extracts a table of compartment statistics at a user-specified time
+point, plus maxima and AUC across the run.
+
+``` r
+
+# Extract summary at day 365
+summary_df <- summarize_leggett_output(
+  time_series      = out$time_series,
+  time_point       = 365,              # Day at which to report compartment values
+  blood_volume_dl  = out$metadata$blood_volume_dl,   # Required to compute BLL (µg/dL)
+  plasma_volume_dl = out$metadata$plasma_volume_dl,  # Required to compute plasma concentration
+  rbc_volume_dl    = out$metadata$rbc_volume_dl      # Required to compute RBC concentration
+)
+
+# Derived quantities appended to the table:
+#   "Blood Lead (ug/dL)"       — (rbc + plasd + plasb) / blood_volume_dl
+#   "Red Blood Cell Lead (ug/dL)" — rbc / rbc_volume_dl
+#   "Plasma Lead (ug/dL)"     — (plasd + plasb) / plasma_volume_dl
+summary_df
+#>                                Compartment        Value          Max
+#> 1                 Plasma (diffusible) (ug) 3.712920e-02 3.712920e-02
+#> 2                 Extracellular fluid (ug) 1.156633e-01 1.156633e-01
+#> 3                     Red blood cells (ug) 1.263267e+02 1.263267e+02
+#> 4                      Plasma (bound) (ug) 2.201797e-01 2.201797e-01
+#> 5               Cortical bone surface (ug) 4.951118e+00 4.951118e+00
+#> 6        Cortical bone (exchangeable) (ug) 1.200409e+02 1.200409e+02
+#> 7    Cortical bone (non-exchangeable) (ug) 9.081895e+00 9.081895e+00
+#> 8             Trabecular bone surface (ug) 6.225657e+00 6.225657e+00
+#> 9      Trabecular bone (exchangeable) (ug) 1.516050e+02 1.516050e+02
+#> 10 Trabecular bone (non-exchangeable) (ug) 8.462305e+00 8.462305e+00
+#> 11             Liver (high perfusion) (ug) 4.378913e+01 4.378913e+01
+#> 12              Liver (low perfusion) (ug) 5.790244e+01 5.790244e+01
+#> 13                Soft tissue (rapid) (ug) 3.289713e+00 3.289713e+00
+#> 14         Soft tissue (intermediate) (ug) 4.297962e+01 4.297962e+01
+#> 15                 Soft tissue (slow) (ug) 1.876960e+01 1.876960e+01
+#> 16                              Brain (ug) 2.593705e+00 2.593705e+00
+#> 17                     Kidney (other) (ug) 3.035945e+00 3.035945e+00
+#> 18                    Small intestine (ug) 9.906716e-02 9.906716e-02
+#> 19              Kidney (urinary path) (ug) 2.735695e+00 2.735695e+00
+#> 20            Large intestine (upper) (ug) 3.211114e-01 3.211114e-01
+#> 21            Large intestine (lower) (ug) 5.934129e-01 5.934129e-01
+#> 22                      Blood Lead (ug/dL) 2.335390e+00 2.335390e+00
+#> 23             Red Blood Cell Lead (ug/dL) 6.130045e+00 6.130045e+00
+#> 24                     Plasma Lead (ug/dL) 7.659209e-03 7.659209e-03
+#>    Time_of_Max_days          AUC
+#> 1               364     9.584450
+#> 2               364    29.784137
+#> 3               364 32202.252261
+#> 4               364    55.559674
+#> 5               364  1141.680956
+#> 6               364 23876.096820
+#> 7               364  1123.616921
+#> 8               364  1433.874914
+#> 9               364 30100.552906
+#> 10              364  1045.984198
+#> 11              364 10825.178937
+#> 12              364  9008.518066
+#> 13              364   846.069418
+#> 14              364  8125.237603
+#> 15              364  2862.882792
+#> 16              364   405.178949
+#> 17              364   492.397448
+#> 18              364    24.783630
+#> 19              364   690.362644
+#> 20              364    80.208128
+#> 21              364   147.792909
+#> 22              364   595.311958
+#> 23              364  1562.625176
+#> 24              364     1.939119
+```
+
+Columns returned:
+
+| Column | Meaning |
+|----|----|
+| `Compartment` | Human-readable compartment name |
+| `Value` | Lead mass (µg) or concentration (µg/dL) at `time_point` |
+| `Max` | Maximum value across the entire simulation |
+| `Time_of_Max_days` | Day on which the maximum occurred |
+| `AUC` | Trapezoidal area under the time–mass curve (µg·days) |
+
+------------------------------------------------------------------------
+
+## Choosing a scenario type
+
+Three scenario templates are available (in the app or via the schedule
+data frame directly):
+
+**Occupational** — Steady workplace and non-occupational exposures over
+a fixed duration. Use this when you have a single continuous exposure
+period with no planned change. Key inputs: airborne concentrations,
+breathing rates, background intakes, and working hours per week.
+
+**Occupational with Retirement** — Adds a post-work stage where
+occupational air and background are set to zero (or to a lower ambient
+level). Use this to project long-term BLL decline after cessation and to
+assess whether bone mobilization keeps BLL elevated. Key decision: how
+many retirement years to simulate, and whether to retain ambient
+non-occupational exposure.
+
+**Pulse** — Models discrete, time-limited exposure events separated by
+recovery intervals. Use this for sporadic high-dose situations (e.g.,
+occasional welding, remediation activities, or experimental bolus
+doses). Key decisions: pulse dose (µg), number of pulses, and
+inter-pulse interval (days). The background stage between pulses
+controls the baseline load.
+
+------------------------------------------------------------------------
+
+## Shiny application
+
+The bundled Shiny app provides a graphical interface to all of the
+above, including:
+
+- Template-driven scenario builder (Occupational / Retirement / Pulse)
+- OEHHA breathing-rate lookup with job presets
+- WAF/DF adjustment panel
+- Interactive time-series plot (Plotly) with compartment group filters
+- Summary data table with downloadable CSV
+
+Launch the app with:
+
+``` r
+
+launch_leggett_app()
+```
+
+The app requires the optional `shiny`, `bslib`, `plotly`, `DT`,
+`shinycssloaders`, and `glue` packages. Install them with:
+
+``` r
+
+install.packages(c("shiny", "bslib", "plotly", "DT", "shinycssloaders", "glue"))
+```
+
+------------------------------------------------------------------------
+
+## References
+
+Leggett, R.W. (1993). An age-specific kinetic model of lead metabolism
+in humans. *Environmental Health Perspectives*, 101(7), 598–616.
+
+California OEHHA (2015). *Air Toxics Hot Spots Program Guidance Manual
+for Preparation of Health Risk Assessments*. Office of Environmental
+Health Hazard Assessment.
