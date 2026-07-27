@@ -13,7 +13,7 @@
 ## Citation
 
 Source:
-[`inst/CITATION`](https://github.com/ScottCoffin/Leggett/blob/main/inst/CITATION)
+[`inst/CITATION`](https://github.com/OEHHA-NTES/Leggett_Plus/blob/main/inst/CITATION)
 
 Lin HC, Coffin S (2026). LeggettPlus: Open-Source Physiologically Based
 Pharmacokinetic Model for Lead (Leggett+). R package version 0.2.0.

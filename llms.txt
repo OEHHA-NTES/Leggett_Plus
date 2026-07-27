@@ -41,7 +41,7 @@ retired), Dr. Stephen Gilbert (CDC/NIOSH/DSI/REB), [Dr. Hsing-Chieh Lin
 ``` r
 
 # install.packages("remotes")
-remotes::install_github("ScottCoffin/Leggett")
+remotes::install_github("OEHHA-NTES/Leggett_Plus")
 ```
 
 ### Installation from Tarball Source
@@ -151,7 +151,7 @@ GPL (\>= 2). See `LICENSE.md` for details.
 ## Contributing
 
 Issues and pull requests are welcome. Please use
-<https://github.com/ScottCoffin/Leggett/issues> for bug reports and
+<https://github.com/OEHHA-NTES/Leggett_Plus/issues> for bug reports and
 feature requests.
 
 # Package index
