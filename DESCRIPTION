@@ -1,0 +1,58 @@
+Package: LeggettPlus
+Type: Package
+Title: Physiologically Based Pharmacokinetic Model for Lead (Leggett+)
+Version: 0.2.0
+Authors@R:
+    c(
+      person("Hsing-Chieh", "Lin",
+            role = "aut",
+            email = "hclin@tamu.edu"),
+      person("Scott", "Coffin",
+            role = c("aut", "cre"),
+            email = "scott.l.coffin@gmail.com",
+            comment = c(ORCID = "0000-0002-7035-1282")),
+      person(given = "New Toxicology Evaluations Section, Office of Environmental Health Hazard Assessment",
+            role = c("cph", "fnd"),
+            email = "NTES@oehha.ca.gov")
+    )
+Description: Implements the age-specific Physiologically Based Pharmacokinetic model for lead,
+    originally developed by Leggett (1993) <doi:10.1289/ehp.93101598> and
+    updated by Vork et al. (2023) <doi:10.1080/15459624.2022.2150767>.
+    The model was coded in 'R' and validated against the original MATLAB implementation
+    by Hsing-Chieh and Coffin (2025).
+    'LeggettPlus' supports simulation of time-varying exposure scenarios,
+    including continuous and pulse exposures, and predicts lead kinetics across
+    multiple physiological compartments over the lifespan.
+    It also includes an optional 'Shiny' application.
+    Physiological parameters and calibration constants are derived from adult
+    male reference and occupational-worker data; no female-specific parameter
+    set is implemented.
+URL: https://github.com/OEHHA-NTES/Leggett_Plus
+BugReports: https://github.com/OEHHA-NTES/Leggett_Plus/issues
+License: GPL (>= 2)
+Encoding: UTF-8
+Depends: R (>= 4.1)
+Imports:
+    deSolve,
+    dplyr (>= 1.0.0),
+    tidyr (>= 1.0.0),
+    stats
+Suggests:
+    testthat (>= 3.0.0),
+    knitr,
+    rmarkdown,
+    shiny (>= 1.6.0),
+    bslib (>= 0.5.0),
+    DT (>= 0.3),
+    plotly,
+    htmlwidgets,
+    glue,
+    readr,
+    purrr,
+    scales,
+    shinycssloaders,
+    spelling
+VignetteBuilder: knitr
+Config/testthat/edition: 3
+Config/roxygen2/version: 8.0.0
+Language: en-US

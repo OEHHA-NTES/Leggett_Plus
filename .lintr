@@ -1,0 +1,11 @@
+linters: linters_with_defaults(
+    line_length_linter = line_length_linter(100),
+    object_name_linter = NULL,
+    object_usage_linter = NULL,
+    commented_code_linter = NULL,
+    indentation_linter = NULL
+  )
+exclusions: list(
+    "vignettes/LeggettPlus.Rmd",
+    "inst/shiny-examples/LeggettApp/app.R"
+  )

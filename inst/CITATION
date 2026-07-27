@@ -1,0 +1,23 @@
+citHeader("To cite LeggettPlus in publications, please use:")
+
+year <- sub("-.*", "", meta$Date)
+if (length(year) == 0 || is.na(year) || !nzchar(year)) {
+  year <- format(Sys.Date(), "%Y")
+}
+version <- meta$Version
+
+bibentry(
+  bibtype = "Manual",
+  title = "LeggettPlus: Open-Source Physiologically Based Pharmacokinetic Model for Lead (Leggett+)",
+  author = c(
+    person("Hsing-Chieh", "Lin"),
+    person("Scott", "Coffin")
+  ),
+  year = year,
+  note = sprintf("R package version %s", version),
+  textVersion = sprintf(
+    "Lin HC, Coffin S (%s). LeggettPlus: Open-Source Physiologically Based Pharmacokinetic Model for Lead (Leggett+). R package version %s.",
+    year,
+    version
+  )
+)
